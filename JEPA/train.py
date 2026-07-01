@@ -88,7 +88,8 @@ class ChessJepaV3Dataset(IterableDataset):
             metadata = torch.load(os.path.join(data_dir, 'metadata.pt'), weights_only=True)
             self.total_samples = metadata.get('games_processed', len(self.chunk_files)*50000) * 60
         except Exception:
-            self.total_samples = 1_000_000
+            print(f"Warning: metadata.pt not found. Estimating total samples from {len(self.chunk_files)} chunks...")
+            self.total_samples = len(self.chunk_files) * 50_000 * 60
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()

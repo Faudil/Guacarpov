@@ -23,7 +23,7 @@ fi
 
 get_instance_ssh() {
     local ID=$1
-    local STATE_OUT=$(vastai show instances --raw | jq -r ".[] | select(.id == $ID)")
+    local STATE_OUT=$(vastai show instances --raw 2>/dev/null | jq -r ".[] | select(type == \"object\" and .id == $ID)")
     SSH_HOST=$(echo "$STATE_OUT" | jq -r '.ssh_host')
     SSH_PORT=$(echo "$STATE_OUT" | jq -r '.ssh_port')
     ACTUAL_STATUS=$(echo "$STATE_OUT" | jq -r '.actual_status')
@@ -179,8 +179,8 @@ elif [ "$COMMAND" == "redeploy" ]; then
     EXTRA_ARGS="$@"
     
     get_instance_ssh $INSTANCE_ID
-    if [ "$SSH_HOST" == "null" ]; then
-        echo "❌ Instance $INSTANCE_ID not found or not running."
+    if [ -z "$SSH_HOST" ] || [ "$SSH_HOST" == "null" ]; then
+        echo "❌ Instance $INSTANCE_ID not found, not running, or failed to parse IP."
         exit 1
     fi
     
@@ -188,7 +188,7 @@ elif [ "$COMMAND" == "redeploy" ]; then
     echo "🔄 Redeploying to existing instance $INSTANCE_ID"
     echo "IP: $SSH_HOST, Port: $SSH_PORT"
     echo "=================================================="
-    ./vast_deploy.sh $SSH_HOST $SSH_PORT $ARCH $EXTRA_ARGS
+    ./vast_deploy.sh "$SSH_HOST" "$SSH_PORT" "$ARCH" $EXTRA_ARGS
 elif [ "$COMMAND" == "recover" ]; then
     if [ -z "$1" ]; then
         echo "❌ Missing INSTANCE_ID. Usage: ./auto_vast_pipeline.sh recover <INSTANCE_ID>"

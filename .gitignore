@@ -225,5 +225,6 @@ recovered_weights/
 *.pth
 *.pt
 *.npz
+
 # I don't think I've got the rights lol
 stockfish_bin/

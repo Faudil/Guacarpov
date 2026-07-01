@@ -29,8 +29,14 @@ if [[ " $EXTRA_ARGS " =~ " --test " ]]; then
     IS_TEST=true
 fi
 
+NUM_CHUNKS="all"
+if [[ " $EXTRA_ARGS " =~ " --upload_chunks " ]]; then
+    NUM_CHUNKS=$(echo "$EXTRA_ARGS" | sed -n 's/.*--upload_chunks \([0-9]*\).*/\1/p')
+    EXTRA_ARGS=$(echo "$EXTRA_ARGS" | sed 's/--upload_chunks [0-9]*//g')
+fi
+
 # Vast.ai SSH typically uses root and can have changing host keys
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $VAST_PORT"
+SSH_OPTS="-q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p $VAST_PORT"
 
 echo "=================================================="
 echo "🚀 Deploying to Vast.ai Instance: $VAST_IP:$VAST_PORT"
@@ -43,14 +49,20 @@ ssh $SSH_OPTS root@$VAST_IP "mkdir -p /workspace/Guacarpov"
 
 echo "[2/4] Uploading all code directories and binaries..."
 # We explicitly exclude .pt, .npz, and .pth caches/models from the code directories
-rsync -avzP --exclude="*.pt" --exclude="*.npz" --exclude="*.pth" --exclude="__pycache__" -e "ssh $SSH_OPTS" ./JEPA/ root@$VAST_IP:/workspace/Guacarpov/JEPA/
-rsync -avzP --exclude="*.pt" --exclude="*.npz" --exclude="*.pth" --exclude="__pycache__" -e "ssh $SSH_OPTS" ./JEPA_Policy/ root@$VAST_IP:/workspace/Guacarpov/JEPA_Policy/
-rsync -avzP --exclude="*.pt" --exclude="*.npz" --exclude="*.pth" --exclude="__pycache__" -e "ssh $SSH_OPTS" ./JEPA_RL/ root@$VAST_IP:/workspace/Guacarpov/JEPA_RL/
-rsync -avzP --exclude="__pycache__" -e "ssh $SSH_OPTS" ./stockfish_bin/ root@$VAST_IP:/workspace/Guacarpov/stockfish_bin/
-rsync -avzP -e "ssh $SSH_OPTS" ./run_pipeline.py root@$VAST_IP:/workspace/Guacarpov/
+rsync -az --info=progress2 --exclude="*.pt" --exclude="*.npz" --exclude="*.pth" --exclude="__pycache__" -e "ssh $SSH_OPTS" ./JEPA/ root@$VAST_IP:/workspace/Guacarpov/JEPA/
+rsync -az --info=progress2 --exclude="*.pt" --exclude="*.npz" --exclude="*.pth" --exclude="__pycache__" -e "ssh $SSH_OPTS" ./JEPA_Policy/ root@$VAST_IP:/workspace/Guacarpov/JEPA_Policy/
+rsync -az --info=progress2 --exclude="*.pt" --exclude="*.npz" --exclude="*.pth" --exclude="__pycache__" -e "ssh $SSH_OPTS" ./JEPA_RL/ root@$VAST_IP:/workspace/Guacarpov/JEPA_RL/
+rsync -az --info=progress2 --exclude="__pycache__" -e "ssh $SSH_OPTS" ./stockfish_bin/ root@$VAST_IP:/workspace/Guacarpov/stockfish_bin/
+rsync -az --info=progress2 -e "ssh $SSH_OPTS" ./run_pipeline.py root@$VAST_IP:/workspace/Guacarpov/
 
-echo "[3/4] Uploading V3 dataset (Streaming via tar to avoid massive file-overhead)..."
-tar -cf - ./jepa_v3_data/ | ssh $SSH_OPTS root@$VAST_IP "cd /workspace/Guacarpov/ && tar -xf -"
+if [ "$NUM_CHUNKS" == "all" ]; then
+    echo "[3/4] Uploading V3 dataset (Streaming all via tar to avoid massive file-overhead)..."
+    tar -cf - ./jepa_v3_data/ | ssh $SSH_OPTS root@$VAST_IP "cd /workspace/Guacarpov/ && tar -xf -"
+else
+    echo "[3/4] Uploading V3 dataset (Streaming $NUM_CHUNKS chunks via tar)..."
+    ssh $SSH_OPTS root@$VAST_IP "mkdir -p /workspace/Guacarpov/jepa_v3_data"
+    find ./jepa_v3_data/ -maxdepth 1 -type f -name "*.npz" | head -n $NUM_CHUNKS | tar -cf - -T - | ssh $SSH_OPTS root@$VAST_IP "cd /workspace/Guacarpov/ && tar -xf -"
+fi
 
 echo "[4/4] Installing dependencies and launching training pipeline..."
 
@@ -83,14 +95,21 @@ ssh $SSH_OPTS root@$VAST_IP << EOF
     echo "Making Stockfish executable..."
     chmod +x stockfish_bin/stockfish/stockfish-ubuntu-x86-64 || true
     
-    echo "Starting full pipeline inside tmux..."
-    # Group the entire command in { } so that tee captures output even if the first command crashes
-    tmux new-session -d -s jepa_train "{ $CMD } 2>&1 | tee training.log"
+    echo "Generating launch script..."
+    echo "#!/bin/bash" > launch.sh
+    echo "set -e" >> launch.sh
+    echo "$CMD" >> launch.sh
+    chmod +x launch.sh
     
     echo "--------------------------------------------------"
-    echo "✅ Setup Complete & Pipeline Launched!"
-    echo "To view your training logs, SSH into the machine and run:"
-    echo "  tmux attach-session -t jepa_train"
-    echo "Or just view the log file:"
-    echo "  tail -f /workspace/Guacarpov/training.log"
+    echo "✅ Setup Complete!"
+    echo "The code and dataset are uploaded, and dependencies are installed."
+    echo ""
+    echo "To start training, SSH into your instance using the following command:"
+    echo "  ssh -p $VAST_PORT root@$VAST_IP"
+    echo ""
+    echo "Then navigate to the workspace and run the launch script:"
+    echo "  cd /workspace/Guacarpov"
+    echo "  ./launch.sh"
+    echo "--------------------------------------------------"
 EOF

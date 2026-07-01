@@ -71,6 +71,8 @@ class HybridLatentThinkingHead(nn.Module):
         if self.jepa_model is not None and hasattr(self.jepa_model, 'forward_predict'):
             with torch.no_grad():
                 future_latents = self.jepa_model.forward_predict(latent)
+            if future_latents.dim() == 2:
+                future_latents = future_latents.unsqueeze(1)
             trajectory = torch.cat([latent.unsqueeze(1), future_latents], dim=1)
         else:
             # Fallback if no JEPA predictor is attached
