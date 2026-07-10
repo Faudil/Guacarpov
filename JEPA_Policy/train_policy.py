@@ -83,7 +83,7 @@ def _load_distill_components(args, device):
         
     from factory import load_jepa_from_checkpoint
     jepa_model, jepa_args = load_jepa_from_checkpoint(args.jepa_checkpoint, device)
-    print("✅ Pre-trained JEPA model loaded successfully.")
+    print("Pre-trained JEPA model loaded successfully.")
     
     policy_model = ChessJepaPolicy(jepa_model, freeze_jepa=True, head_type=args.head_type).to(device)
     head_params = sum(p.numel() for p in policy_model.policy_head.parameters())
@@ -150,7 +150,7 @@ def train_policy(args):
             'loss': epoch_loss, 'jepa_args': jepa_args, 'head_type': args.head_type, 'args': args
         }, args.save_path)
         print(f"Policy checkpoint saved to '{args.save_path}'")
-    print("\n🎉 Policy distillation training complete!")
+    print("\nPolicy distillation training complete!")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train Chess JEPA Policy Head.")

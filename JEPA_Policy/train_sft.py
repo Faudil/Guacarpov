@@ -90,7 +90,8 @@ def _load_sft_models_optimizer(args, device):
     head_params = sum(p.numel() for p in policy_model.policy_head.parameters())
     print(f"Policy head: '{args.head_type}' ({head_params:,} params)")
     
-    optimizer = optim.AdamW(policy_model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    trainable_params = [p for p in policy_model.parameters() if p.requires_grad]
+    optimizer = optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
     criterion = nn.CrossEntropyLoss()
     return policy_model, optimizer, criterion, jepa_args
 
@@ -150,6 +151,14 @@ def main(args):
     best_val_acc = 0.0
     print("\nStarting SFT Fine-Tuning...")
     for epoch in range(args.epochs):
+        if args.freeze_backbone and args.unfreeze_epoch > 0 and (epoch + 1) == args.unfreeze_epoch:
+            print(f"\n[Stage 2] Epoch {epoch+1}: Unfreezing JEPA backbone for end-to-end training...")
+            for param in policy_model.jepa_model.parameters():
+                param.requires_grad = True
+            
+            optimizer = optim.AdamW(policy_model.parameters(), lr=args.unfreeze_lr, weight_decay=args.weight_decay)
+            print(f"Re-initialized optimizer with LR={args.unfreeze_lr} for all parameters.")
+
         avg_train_loss = _train_sft_epoch(policy_model, train_loader, optimizer, criterion, device, epoch, args.epochs)
         avg_val_loss, val_accuracy = _validate_sft(policy_model, val_loader, criterion, device)
         print(f"Epoch {epoch+1}/{args.epochs} Summary: Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | Val Top-1 Accuracy: {val_accuracy*100:.2f}%")
@@ -162,20 +171,22 @@ def main(args):
                 'jepa_args': jepa_args, 'head_type': args.head_type, 'val_accuracy': val_accuracy, 'args': args
             }, args.save_path)
             print(f"⭐ New best checkpoint saved to '{args.save_path}' (Val Acc: {val_accuracy*100:.2f}%)")
-    print(f"\n🎉 Supervised Fine-Tuning complete! Best Val Accuracy: {best_val_acc*100:.2f}%")
+    print(f"\nSupervised Fine-Tuning complete! Best Val Accuracy: {best_val_acc*100:.2f}%")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Fine-tune Chess Policy via Supervised SFT on Lichess.")
-    parser.add_argument('--jepa_checkpoint', type=str, default='JEPA/chess_jepa.pth', help="Path to pre-trained JEPA model.")
+    parser.add_argument('--jepa_checkpoint', type=str, default='JEPA/chess_jepa_ep1.pth', help="Path to pre-trained JEPA model.")
     parser.add_argument('--save_path', type=str, default='JEPA_Policy/chess_sft_policy.pth', help="Path to save SFT checkpoint.")
     parser.add_argument('--num_games', type=int, default=100_000, help="Number of games to parse from HF dataset.")
     parser.add_argument('--min_elo', type=int, default=2200, help="Minimum rating for both players to include the game.")
-    parser.add_argument('--batch_size', type=int, default=1024, help="Batch size for SFT.")
+    parser.add_argument('--batch_size', type=int, default=2048, help="Batch size for SFT.")
     parser.add_argument('--epochs', type=int, default=5, help="Number of SFT training epochs.")
     parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate.")
     parser.add_argument('--weight_decay', type=float, default=1e-4, help="Weight decay.")
     parser.add_argument('--val_split', type=float, default=0.1, help="Validation set split ratio.")
     parser.add_argument('--freeze_backbone', action='store_true', help="Freeze JEPA context encoder backbone.")
+    parser.add_argument('--unfreeze_epoch', type=int, default=-1, help="Epoch to unfreeze backbone (Two-Stage Training). -1 to disable.")
+    parser.add_argument('--unfreeze_lr', type=float, default=1e-5, help="Learning rate after unfreezing backbone.")
     parser.add_argument('--no_cache', action='store_true', help="Disable dataset caching.")
     parser.add_argument('--head_type', type=str, default='linear', choices=['linear', 'mlp', 'transformer', 'moe', 'latent_thinker', 'moe_latent_thinker'],
                         help="Policy head architecture: linear (default), mlp, transformer, moe, latent_thinker, or moe_latent_thinker.")

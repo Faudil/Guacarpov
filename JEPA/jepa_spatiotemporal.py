@@ -42,7 +42,14 @@ class SpatialEncoder(nn.Module):
             nn.LayerNorm(d_model)
         )
         
-    def forward(self, x):
+        self.projector = nn.Sequential(
+            nn.Linear(d_model, d_model * 2),
+            nn.LayerNorm(d_model * 2),
+            nn.GELU(),
+            nn.Linear(d_model * 2, d_model)
+        )
+        
+    def forward_repr(self, x):
         x = self.stem(x)
         for blk in self.blocks:
             x = blk(x)
@@ -50,6 +57,10 @@ class SpatialEncoder(nn.Module):
         x = self.norm(x)
         x = x.permute(0, 3, 1, 2)
         return self.head(x)
+
+    def forward(self, x):
+        repr = self.forward_repr(x)
+        return self.projector(repr)
 
 class SpatioTemporalEncoder(nn.Module):
     """
@@ -64,7 +75,7 @@ class SpatioTemporalEncoder(nn.Module):
         # Temporal Positional Embeddings
         self.pos_embedding = nn.Parameter(torch.randn(1, t_history, d_model))
         
-        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=d_model*4, batch_first=True, activation='gelu')
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=d_model*4, batch_first=True, activation='gelu', norm_first=True)
         self.temporal = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         
         # We'll use a [CLS] style token, or just pool the temporal sequence
@@ -75,7 +86,7 @@ class SpatioTemporalEncoder(nn.Module):
         B, T, C, H, W = x.shape
         # Spatial processing
         x = x.view(B * T, C, H, W)
-        spatial_latents = self.spatial(x)
+        spatial_latents = self.spatial.forward_repr(x)
         spatial_latents = spatial_latents.view(B, T, -1) # (B, T, d_model)
         
         # Temporal processing
@@ -104,16 +115,24 @@ class TrajectoryPredictor(nn.Module):
         self.action_embed = nn.Embedding(action_dim + 1, action_embed_dim, padding_idx=action_dim)
         self.action_proj = nn.Linear(action_embed_dim, d_model)
         
+        nn.init.zeros_(self.action_proj.weight)
+        nn.init.zeros_(self.action_proj.bias)
+        
         # Learned query embeddings for future steps
         self.query_embeds = nn.Parameter(torch.randn(1, t_future, d_model))
         
         # Cross-attention predictor
         # Queries: Future step embeddings
         # Keys/Values: Context latent (projected)
-        decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=d_model*4, batch_first=True, activation='gelu')
+        decoder_layer = nn.TransformerDecoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=d_model*4, batch_first=True, activation='gelu', norm_first=True)
         self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
         
-        self.out_proj = nn.Linear(d_model, d_model)
+        self.out_proj = nn.Sequential(
+            nn.Linear(d_model, d_model * 2),
+            nn.LayerNorm(d_model * 2),
+            nn.GELU(),
+            nn.Linear(d_model * 2, d_model)
+        )
         self.norm = nn.LayerNorm(d_model)
         
     def forward(self, context_latent, actions=None):
@@ -126,10 +145,12 @@ class TrajectoryPredictor(nn.Module):
         
         if actions is not None:
             actions_clean = actions.clone()
+            if actions_clean.dim() == 1:
+                actions_clean = actions_clean.unsqueeze(1)
             actions_clean[actions_clean == -1] = 4672
             a_emb = self.action_embed(actions_clean)
             a_proj = self.action_proj(a_emb)
-            queries = queries + a_proj.unsqueeze(1)
+            queries = queries + a_proj
             
         out = self.decoder(queries, memory)
         return self.norm(self.out_proj(out))
@@ -139,7 +160,7 @@ class ChessJEPA_SpatioTemporal(nn.Module):
     Option C: Spatio-Temporal JEPA (V-JEPA style).
     Models the game as a temporal sequence. Predicts multiple future steps.
     """
-    def __init__(self, in_channels=15, d_model=512, t_history=8, t_future=4, dim=128, num_blocks=4, nhead=8, num_layers=4):
+    def __init__(self, in_channels=15, d_model=512, t_history=8, t_future=4, dim=128, num_blocks=4, nhead=8, num_layers=4, pred_layers=None):
         super().__init__()
         self.latent_dim = d_model
         self.t_future = t_future
@@ -156,7 +177,8 @@ class ChessJEPA_SpatioTemporal(nn.Module):
         for param in self.target_encoder.parameters():
             param.requires_grad = False
             
-        self.predictor = TrajectoryPredictor(d_model, t_future, nhead=nhead, num_layers=num_layers)
+        p_layers = num_layers if pred_layers is None else pred_layers
+        self.predictor = TrajectoryPredictor(d_model, t_future, nhead=nhead, num_layers=p_layers)
         
         self.value_head = nn.Sequential(
             nn.Linear(d_model, d_model),
@@ -174,7 +196,7 @@ class ChessJEPA_SpatioTemporal(nn.Module):
         target.load_state_dict(source.state_dict())
         
     @torch.no_grad()
-    def update_target_encoder(self, decay=0.996):
+    def update_target_encoder(self, decay=0.999):
         # Update target spatial encoder with EMA of context spatial encoder
         for param_q, param_k in zip(self.context_encoder.spatial.parameters(), self.target_encoder.parameters()):
             param_k.data = param_k.data * decay + param_q.data * (1.0 - decay)

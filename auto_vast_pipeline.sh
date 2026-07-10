@@ -93,7 +93,7 @@ do_monitor() {
 
     while true; do
         echo "[$(date +'%H:%M:%S')] Syncing artifacts..."
-        rsync -azq -e "ssh $SSH_OPTS" root@$SSH_HOST:/workspace/Guacarpov/JEPA/chess_jepa.pth ./recovered_weights/ || true
+        rsync -azq -e "ssh $SSH_OPTS" root@$SSH_HOST:"/workspace/Guacarpov/JEPA/chess_jepa*.pth" ./recovered_weights/ || true
         rsync -azq -e "ssh $SSH_OPTS" root@$SSH_HOST:/workspace/Guacarpov/JEPA_Policy/chess_sft_policy.pth ./recovered_weights/ || true
         rsync -azq -e "ssh $SSH_OPTS" root@$SSH_HOST:/workspace/Guacarpov/JEPA_RL/chess_rl_policy.pth ./recovered_weights/ || true
         rsync -azq -e "ssh $SSH_OPTS" root@$SSH_HOST:/workspace/Guacarpov/training.log ./recovered_weights/ || true
@@ -128,7 +128,7 @@ do_recover() {
     local SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p $SSH_PORT"
     mkdir -p recovered_weights
 
-    rsync -avzP -e "ssh $SSH_OPTS" root@$SSH_HOST:/workspace/Guacarpov/JEPA/chess_jepa.pth ./recovered_weights/ || true
+    rsync -avzP -e "ssh $SSH_OPTS" root@$SSH_HOST:"/workspace/Guacarpov/JEPA/chess_jepa*.pth" ./recovered_weights/ || true
     rsync -avzP -e "ssh $SSH_OPTS" root@$SSH_HOST:/workspace/Guacarpov/JEPA_Policy/chess_sft_policy.pth ./recovered_weights/ || true
     rsync -avzP -e "ssh $SSH_OPTS" root@$SSH_HOST:/workspace/Guacarpov/JEPA_RL/chess_rl_policy.pth ./recovered_weights/ || true
     rsync -avzP -e "ssh $SSH_OPTS" root@$SSH_HOST:/workspace/Guacarpov/training.log ./recovered_weights/ || true

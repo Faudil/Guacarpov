@@ -219,10 +219,10 @@ def reconstruct_111_channel_state(trajectory: np.ndarray, current_step: int) -> 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Prepare JEPA v3 dataset from Lichess games.")
-    parser.add_argument('--num_games', type=int, default=30_000_000)
+    parser.add_argument('--num_games', type=int, default=3_000_000)
     parser.add_argument('--min_elo', type=int, default=0)
     parser.add_argument('--output_dir', type=str, default='jepa_v3_data')
-    parser.add_argument('--games_per_chunk', type=int, default=50_000)
+    parser.add_argument('--games_per_chunk', type=int, default=100_000)
     parser.add_argument('--num_workers', type=int, default=0)
     
     args = parser.parse_args()

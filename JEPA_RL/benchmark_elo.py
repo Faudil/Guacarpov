@@ -241,7 +241,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Benchmark Chess JEPA Model ELO.")
-    parser.add_argument('--model_checkpoint', type=str, default='JEPA_RL/chess_rl_policy.pth', help="Path to model policy checkpoint.")
+    parser.add_argument('--model_checkpoint', type=str, default='JEPA_POLICY/chess_sft_policy.pth', help="Path to model policy checkpoint.")
     parser.add_argument('--stockfish_path', type=str, default='stockfish_bin/stockfish/stockfish-ubuntu-x86-64', help="Path to local Stockfish binary.")
     parser.add_argument('--games_per_opponent', type=int, default=4, help="Number of games to play against each opponent.")
     parser.add_argument('--max_moves', type=int, default=200, help="Max moves per game.")

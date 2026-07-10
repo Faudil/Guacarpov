@@ -45,6 +45,7 @@ def build_jepa_model(args):
         spatial_blocks = getattr(args, 'spatial_blocks', 4)
         temporal_layers = getattr(args, 'temporal_layers', 4)
         temporal_heads = getattr(args, 'temporal_heads', 8)
+        predictor_layers = getattr(args, 'predictor_layers', None)
         
         return ChessJEPA_SpatioTemporal(
             in_channels=in_channels,
@@ -54,7 +55,8 @@ def build_jepa_model(args):
             dim=spatial_dim,
             num_blocks=spatial_blocks,
             nhead=temporal_heads,
-            num_layers=temporal_layers
+            num_layers=temporal_layers,
+            pred_layers=predictor_layers
         )
     else:
         raise ValueError(f"Unknown architecture: {arch}")

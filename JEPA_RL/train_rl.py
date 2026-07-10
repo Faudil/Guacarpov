@@ -295,7 +295,7 @@ if __name__ == '__main__':
     parser.add_argument('--opp_stockfish', type=float, default=0.25, help="Probability of playing against Stockfish.")
     parser.add_argument('--opp_self', type=float, default=0.5, help="Probability of playing against Self (RL model).")
     parser.add_argument('--stockfish_path', type=str, default='stockfish_bin/stockfish/stockfish-ubuntu-x86-64', help="Path to Stockfish binary.")
-    parser.add_argument('--freeze_backbone', action='store_true', help="Freeze JEPA encoder backbone.")
+    parser.add_argument('--unfreeze_backbone', action='store_true', help="Unfreeze JEPA encoder backbone (NOT recommended for RL).")
     parser.add_argument('--save_path', type=str, default='JEPA_RL/chess_rl_policy.pth', help="Path to save RL checkpoint.")
     parser.add_argument('--batch_size', type=int, default=1024, help="Batch size for RL training.")
     parser.add_argument('--num_workers', type=int, default=2, help="Number of workers for DataLoader.")
@@ -304,4 +304,8 @@ if __name__ == '__main__':
                         help="Policy head architecture: linear (default), mlp, transformer, moe, latent_thinker, or moe_latent_thinker.")
     
     args = parser.parse_args()
+    
+    # Freeze backbone by default for RL unless explicitly unfrozen
+    args.freeze_backbone = not args.unfreeze_backbone
+    
     train_rl(args)

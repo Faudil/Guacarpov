@@ -61,16 +61,12 @@ class MoELatentThinkingHead(nn.Module):
                     value_pred = self.jepa_model.predict_value(thought_state.squeeze(1)) # (B, 1)
             else:
                 value_pred = torch.zeros(B, 1, device=latent.device)
-                
             thought_state, halt_prob, update_gate = self.act_cell(thought_state, trajectory, value_pred)
-            
             if step == self.max_steps - 1:
                 p_n = remainders
             else:
                 p_n = torch.min(halt_prob, remainders)
-                
             accumulated_thought = (1.0 - update_gate) * accumulated_thought + update_gate * p_n * thought_state.squeeze(1)
-            
             accumulated_prob = accumulated_prob + p_n
             remainders = remainders - p_n
             
